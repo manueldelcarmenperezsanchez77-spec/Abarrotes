@@ -1,0 +1,6 @@
+{
+  "name": "AbarrotesPro POS & ERP Database Engine",
+  "description": "Sistema de Punto de Venta profesional para tiendas de abarrotes con arquitectura relacional, procedimientos almacenados para transacciones críticas, control de inventario con kardex, corte de caja X y Z, vistas optimizadas y microservicios escalables.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
