@@ -10,6 +10,8 @@ interface StockMovementModalProps {
   products: Product[];
   currentUser: User;
   lang: Language;
+  initialProductId?: string;
+  initialQuantity?: number;
   onSuccess: () => void;
   onClose: () => void;
 }
@@ -19,26 +21,34 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
   products,
   currentUser,
   lang,
+  initialProductId,
+  initialQuantity,
   onSuccess,
   onClose,
 }) => {
   const t = translations[lang];
 
   // Common fields
-  const [selectedProductId, setSelectedProductId] = useState<string>(products[0]?.id || '');
-  const [quantity, setQuantity] = useState<string>('5');
+  const [selectedProductId, setSelectedProductId] = useState<string>(
+    initialProductId || products[0]?.id || ''
+  );
+  const [quantity, setQuantity] = useState<string>(
+    initialQuantity ? initialQuantity.toString() : '5'
+  );
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [txLogs, setTxLogs] = useState<TransactionStepLog[] | null>(null);
+
+  const matchedProd = products.find((p) => p.id === (initialProductId || products[0]?.id));
 
   // Entry fields
   const [providerName, setProviderName] = useState<string>('Abarrotera Mayorista Central');
   const [invoiceRef, setInvoiceRef] = useState<string>(`FAC-${Date.now().toString().slice(-5)}`);
   const [unitCost, setUnitCost] = useState<string>(
-    products[0]?.precio_costo?.toString() || '20'
+    matchedProd?.precio_costo?.toString() || '20'
   );
   const [newSellingPrice, setNewSellingPrice] = useState<string>(
-    products[0]?.precio_venta?.toString() || '28'
+    matchedProd?.precio_venta?.toString() || '28'
   );
   const [batchNumber, setBatchNumber] = useState<string>(
     `L-${new Date().toISOString().substring(0, 10).replace(/-/g, '')}-A`

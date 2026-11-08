@@ -12,6 +12,7 @@ import {
   ViewInventoryTurnover,
   ViewCategoryMargin,
   ViewStockAlert,
+  StockNotification,
   StoredProcedureResult,
 } from '../types/database';
 
@@ -69,6 +70,13 @@ export const CatalogInventoryService = {
     usuario_id: string;
   }): StoredProcedureResult<{ nuevoStock: number }> => db.sp_salida_merma(params),
   getKardex: (): KardexMovement[] => db.getKardex(),
+  // Stock minimum notifications logic integrated with inventory service
+  getStockNotifications: (): StockNotification[] => db.getStockNotifications(),
+  getUnreadStockNotificationsCount: (): number => db.getUnreadStockNotificationsCount(),
+  markStockNotificationAsRead: (id: string): void => db.markStockNotificationAsRead(id),
+  markAllStockNotificationsAsRead: (): void => db.markAllStockNotificationsAsRead(),
+  dismissStockNotification: (id: string): void => db.dismissStockNotification(id),
+  checkAndGenerateStockAlerts: (): StockNotification[] => db.checkAndGenerateStockAlerts(),
 };
 
 /**

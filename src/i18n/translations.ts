@@ -91,6 +91,18 @@ export const translations = {
     edit: 'Editar',
     save: 'Guardar',
 
+    // Stock Notifications
+    stockAlertsTitle: 'Alertas de Stock Mínimo',
+    activeAlertsCount: 'alertas activas de inventario',
+    reorderSuggestion: 'Sugerencia de Reabastecimiento',
+    restockAction: 'Reabastecer (Entrada)',
+    markAsRead: 'Marcar como leída',
+    markAllAsRead: 'Marcar todas como leídas',
+    dismissAlert: 'Descartar',
+    noActiveAlerts: 'No hay alertas activas de stock mínimo.',
+    allOptimalStock: 'Todos los productos se encuentran por encima de su umbral mínimo.',
+
+
     // Stock Movement Modal
     entryTitle: 'Entrada de Mercancía (sp_entrada_mercancia)',
     exitTitle: 'Salida de Mercancía por Merma (sp_salida_merma)',
@@ -268,6 +280,18 @@ export const translations = {
     optimal: 'Optimal',
     edit: 'Edit',
     save: 'Save',
+
+    // Stock Notifications
+    stockAlertsTitle: 'Minimum Stock Alerts',
+    activeAlertsCount: 'active inventory alerts',
+    reorderSuggestion: 'Reorder Suggestion',
+    restockAction: 'Restock (Entry)',
+    markAsRead: 'Mark as read',
+    markAllAsRead: 'Mark all as read',
+    dismissAlert: 'Dismiss',
+    noActiveAlerts: 'No active minimum stock alerts.',
+    allOptimalStock: 'All products are above their configured minimum thresholds.',
+
 
     // Stock Movement Modal
     entryTitle: 'Stock Inflow (sp_entrada_mercancia)',

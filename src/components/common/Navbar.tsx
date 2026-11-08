@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Language, translations } from '../../i18n/translations';
 import { User, CashRegisterSession } from '../../types/database';
+import { CatalogInventoryService } from '../../services/microservices';
 
 interface NavbarProps {
   currentTab: 'pos' | 'inventory' | 'cash' | 'reports' | 'database';
@@ -38,9 +39,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   const t = translations[lang];
   const [userDropdownOpen, setUserDropdownOpen] = React.useState(false);
 
+  const unreadStockAlerts = CatalogInventoryService.getUnreadStockNotificationsCount();
+
   const navItems = [
     { id: 'pos' as const, label: t.navPos, icon: ShoppingCart },
-    { id: 'inventory' as const, label: t.navInventory, icon: Boxes },
+    { id: 'inventory' as const, label: t.navInventory, icon: Boxes, badge: unreadStockAlerts },
     { id: 'cash' as const, label: t.navCash, icon: Landmark },
     { id: 'reports' as const, label: t.navReports, icon: BarChart3 },
     { id: 'database' as const, label: t.navDatabase, icon: Database },
@@ -74,7 +77,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 key={item.id}
                 onClick={() => onSelectTab(item.id)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 relative ${
                   isActive
                     ? 'bg-slate-800 text-emerald-400 font-semibold shadow-inner'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
@@ -82,6 +85,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 <Icon className={`w-4 h-4 ${isActive ? 'text-emerald-400' : 'text-slate-400'}`} />
                 <span>{item.label}</span>
+                {item.badge && item.badge > 0 ? (
+                  <span className="px-1.5 py-0.2 text-[10px] font-mono font-bold rounded-full bg-amber-500 text-slate-950 ml-0.5">
+                    {item.badge}
+                  </span>
+                ) : null}
               </button>
             );
           })}

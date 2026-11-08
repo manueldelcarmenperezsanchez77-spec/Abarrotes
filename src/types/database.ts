@@ -252,3 +252,29 @@ export interface ViewStockAlert {
   estado: 'CRITICO' | 'BAJO' | 'OPTIMO';
   dias_para_caducidad_proxima?: number;
 }
+
+// Inventory Stock Notification System
+export type StockNotificationSeverity = 'critical' | 'warning' | 'info';
+export type StockNotificationType =
+  | 'STOCK_MINIMO_ALCANZADO'
+  | 'STOCK_CRITICO'
+  | 'STOCK_AGOTADO'
+  | 'LOTE_POR_CADUCAR';
+
+export interface StockNotification {
+  id: string;
+  producto_id: string;
+  sku: string;
+  producto_nombre: string;
+  categoria_nombre?: string;
+  stock_actual: number;
+  stock_minimo: number;
+  unidad_medida: UnitOfMeasure;
+  tipo: StockNotificationType;
+  severidad: StockNotificationSeverity;
+  mensaje: string;
+  timestamp: string;
+  leida: boolean;
+  sugerencia_reorden: number;
+}
+

@@ -18,6 +18,9 @@ import {
   ViewInventoryTurnover,
   ViewCategoryMargin,
   ViewStockAlert,
+  StockNotification,
+  StockNotificationSeverity,
+  StockNotificationType,
 } from '../types/database';
 import {
   INITIAL_USERS,
@@ -43,6 +46,7 @@ interface DBState {
   kardex: KardexMovement[];
   cashCuts: CashCutRecord[];
   clientsFiado: ClientFiado[];
+  stockNotifications: StockNotification[];
   activeSessionId: string;
   activeUserId: string;
 }
@@ -53,6 +57,8 @@ class RelationalDatabaseEngine {
 
   constructor() {
     this.state = this.loadState();
+    // Scan and prepare active minimum stock alerts on initialization
+    this.checkAndGenerateStockAlerts(false);
   }
 
   private loadState(): DBState {
@@ -62,7 +68,12 @@ class RelationalDatabaseEngine {
         if (stored) {
           const parsed = JSON.parse(stored);
           if (parsed && parsed.products && parsed.products.length > 0) {
-            return parsed;
+            return {
+              ...parsed,
+              stockNotifications: Array.isArray(parsed.stockNotifications)
+                ? parsed.stockNotifications
+                : [],
+            };
           }
         }
       } catch {
@@ -80,6 +91,7 @@ class RelationalDatabaseEngine {
       kardex: INITIAL_KARDEX,
       cashCuts: [],
       clientsFiado: INITIAL_CLIENTS_FIADO,
+      stockNotifications: [],
       activeSessionId: INITIAL_REGISTER_SESSION.id,
       activeUserId: INITIAL_USERS[1].id, // Rosa Hernández (Cajero)
     };
@@ -128,9 +140,11 @@ class RelationalDatabaseEngine {
       kardex: INITIAL_KARDEX,
       cashCuts: [],
       clientsFiado: INITIAL_CLIENTS_FIADO,
+      stockNotifications: [],
       activeSessionId: INITIAL_REGISTER_SESSION.id,
       activeUserId: INITIAL_USERS[1].id,
     };
+    this.checkAndGenerateStockAlerts(false);
     this.persist();
   }
 
@@ -202,6 +216,154 @@ class RelationalDatabaseEngine {
   public getBatches(): BatchLot[] {
     return [...this.state.batches];
   }
+
+  // =========================================================================
+  // INVENTORY NOTIFICATIONS SYSTEM
+  // =========================================================================
+
+  public getStockNotifications(): StockNotification[] {
+    if (!this.state.stockNotifications || this.state.stockNotifications.length === 0) {
+      this.checkAndGenerateStockAlerts(false);
+    }
+    return [...(this.state.stockNotifications || [])].sort((a, b) => {
+      // Unread alerts first, then critical first, then newest
+      if (a.leida !== b.leida) return a.leida ? 1 : -1;
+      if (a.severidad !== b.severidad) return a.severidad === 'critical' ? -1 : 1;
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    });
+  }
+
+  public getUnreadStockNotificationsCount(): number {
+    return this.getStockNotifications().filter((n) => !n.leida).length;
+  }
+
+  public markStockNotificationAsRead(id: string): void {
+    if (!this.state.stockNotifications) return;
+    const notifs = [...this.state.stockNotifications];
+    const idx = notifs.findIndex((n) => n.id === id);
+    if (idx !== -1) {
+      notifs[idx] = { ...notifs[idx], leida: true };
+      this.state.stockNotifications = notifs;
+      this.persist();
+    }
+  }
+
+  public markAllStockNotificationsAsRead(): void {
+    if (!this.state.stockNotifications) return;
+    this.state.stockNotifications = this.state.stockNotifications.map((n) => ({
+      ...n,
+      leida: true,
+    }));
+    this.persist();
+  }
+
+  public dismissStockNotification(id: string): void {
+    if (!this.state.stockNotifications) return;
+    this.state.stockNotifications = this.state.stockNotifications.filter((n) => n.id !== id);
+    this.persist();
+  }
+
+  public triggerStockAlertForProduct(
+    product: Product,
+    _prevStock?: number,
+    newStock?: number
+  ): StockNotification | null {
+    const currentStock = newStock !== undefined ? newStock : product.stock_actual;
+
+    // If stock has been replenished above minimum, auto-resolve any active alert
+    if (currentStock > product.stock_minimo) {
+      if (this.state.stockNotifications) {
+        this.state.stockNotifications = this.state.stockNotifications.filter(
+          (n) => n.producto_id !== product.id
+        );
+      }
+      return null;
+    }
+
+    const cat =
+      this.state.categories.find((c) => c.id === product.categoria_id)?.nombre || 'Abarrotes';
+    const isOutOfStock = currentStock <= 0;
+    const isCritical = currentStock <= product.stock_minimo * 0.3;
+
+    let tipo: StockNotificationType = 'STOCK_MINIMO_ALCANZADO';
+    let severidad: StockNotificationSeverity = 'warning';
+    let mensaje = `El producto '${product.nombre}' alcanzó su stock mínimo configurado (${product.stock_minimo} ${product.unidad_medida}). Existencia actual: ${currentStock} ${product.unidad_medida}.`;
+
+    if (isOutOfStock) {
+      tipo = 'STOCK_AGOTADO';
+      severidad = 'critical';
+      mensaje = `¡ALERTA AGOTADO! '${product.nombre}' tiene 0 ${product.unidad_medida} en existencia. Se requiere reabastecimiento urgente de almacén.`;
+    } else if (isCritical) {
+      tipo = 'STOCK_CRITICO';
+      severidad = 'critical';
+      mensaje = `¡ALERTA CRÍTICA! '${product.nombre}' está en nivel crítico con solo ${currentStock} ${product.unidad_medida} (umbral mínimo: ${product.stock_minimo} ${product.unidad_medida}). Riesgo inminente de quiebre de stock.`;
+    }
+
+    const reorderSuggestion = Math.max(
+      1,
+      Math.round(product.stock_minimo * 2 - currentStock)
+    );
+
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+    if (!this.state.stockNotifications) {
+      this.state.stockNotifications = [];
+    }
+
+    const existingIndex = this.state.stockNotifications.findIndex(
+      (n) => n.producto_id === product.id
+    );
+
+    const alertItem: StockNotification = {
+      id:
+        existingIndex !== -1
+          ? this.state.stockNotifications[existingIndex].id
+          : `notif_${product.id}_${Date.now()}`,
+      producto_id: product.id,
+      sku: product.sku,
+      producto_nombre: product.nombre,
+      categoria_nombre: cat,
+      stock_actual: currentStock,
+      stock_minimo: product.stock_minimo,
+      unidad_medida: product.unidad_medida,
+      tipo,
+      severidad,
+      mensaje,
+      timestamp,
+      leida: false,
+      sugerencia_reorden: reorderSuggestion,
+    };
+
+    if (existingIndex !== -1) {
+      this.state.stockNotifications[existingIndex] = alertItem;
+    } else {
+      this.state.stockNotifications = [alertItem, ...this.state.stockNotifications];
+    }
+
+    return alertItem;
+  }
+
+  public checkAndGenerateStockAlerts(shouldPersist = true): StockNotification[] {
+    const alerts: StockNotification[] = [];
+    this.state.products.forEach((prod) => {
+      if (prod.stock_actual <= prod.stock_minimo) {
+        const notif = this.triggerStockAlertForProduct(prod);
+        if (notif) alerts.push(notif);
+      } else {
+        if (this.state.stockNotifications) {
+          this.state.stockNotifications = this.state.stockNotifications.filter(
+            (n) => n.producto_id !== prod.id
+          );
+        }
+      }
+    });
+
+    if (shouldPersist) {
+      this.persist();
+    }
+    return alerts;
+  }
+
 
   // =========================================================================
   // STORED PROCEDURES (ACID TRANSACTION COORDINATION)
@@ -457,14 +619,36 @@ class RelationalDatabaseEngine {
       }
     }
 
-    // STEP 8: COMMIT TRANSACTION
+    // STEP 8: INVENTORY STOCK MINIMUM THRESHOLD CHECK & NOTIFICATIONS
+    const triggeredAlerts: string[] = [];
+    updatedProducts.forEach((prod) => {
+      if (prod.stock_actual <= prod.stock_minimo) {
+        const notif = this.triggerStockAlertForProduct(prod);
+        if (notif) {
+          triggeredAlerts.push(`${prod.nombre} (${prod.stock_actual} ${prod.unidad_medida})`);
+        }
+      }
+    });
+
+    if (triggeredAlerts.length > 0) {
+      logs.push({
+        step: 7,
+        operation: 'STOCK_MINIMUM_NOTIFICATION_TRIGGERED',
+        sql_statement: `ALERT_SYSTEM_EVENT: Stock minimum threshold reached for ${triggeredAlerts.length} items.`,
+        status: 'WARNING',
+        details: `Notified inventory service: ${triggeredAlerts.join('; ')}`,
+        timestamp,
+      });
+    }
+
+    // STEP 9: COMMIT TRANSACTION
     this.state.products = updatedProducts;
     this.state.sales = [newSale, ...this.state.sales];
     this.state.kardex = [...newKardexRecords, ...this.state.kardex];
     this.persist();
 
     logs.push({
-      step: 7,
+      step: 8,
       operation: 'TRANSACTION_COMMIT',
       sql_statement: 'COMMIT TRANSACTION;',
       status: 'SUCCESS',
@@ -608,6 +792,15 @@ class RelationalDatabaseEngine {
     this.state.products = updatedProducts;
     this.state.kardex = [...newKardexRecords, ...this.state.kardex];
     this.state.batches = newBatches;
+
+    // Re-evaluate stock minimum alerts for replenished products (auto-resolve if above minimum)
+    params.items.forEach((item) => {
+      const p = updatedProducts.find((prod) => prod.id === item.producto_id);
+      if (p) {
+        this.triggerStockAlertForProduct(p);
+      }
+    });
+
     this.persist();
 
     return {
@@ -709,6 +902,12 @@ class RelationalDatabaseEngine {
     };
 
     this.state.kardex = [kardexRec, ...this.state.kardex];
+
+    // Evaluate stock alert if product reached or dropped below minimum
+    if (newStock <= prod.stock_minimo) {
+      this.triggerStockAlertForProduct(this.state.products[prodIdx]);
+    }
+
     this.persist();
 
     logs.push({
@@ -1038,6 +1237,7 @@ class RelationalDatabaseEngine {
           updated_at: timestamp,
         } as Product;
         this.state.products[idx] = updated;
+        this.triggerStockAlertForProduct(updated);
         this.persist();
         return updated;
       }
@@ -1083,6 +1283,7 @@ class RelationalDatabaseEngine {
       });
     }
 
+    this.triggerStockAlertForProduct(newProd);
     this.persist();
     return newProd;
   }
